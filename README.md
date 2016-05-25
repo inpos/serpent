@@ -7,6 +7,6 @@
 
 * Python 2.7
 * Twisted
-* zone.interface
+* zope.interface
 * вдохновение
 * чай с лимоном
