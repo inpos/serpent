@@ -3,6 +3,9 @@ from serpent.config import conf
 from serpent import dataio, misc, rules
 from datetime import datetime, timedelta
 from os import path
+from DNS import dnslookup
+from operator import itemgetter
+from smtplib import SMTP
 
 class SmtpQueue(object):
     def __init__(self, store, local_delivery):
@@ -39,7 +42,40 @@ class SmtpQueue(object):
         return self.local_delivery.deliver(user, message['message'])
     
     def __send_email_(self, mid):
-        pass
+        info = self.stor.getinfo(mid)
+        try:
+            mail_servers = dnslookup(info['rcpt'][1], 'mx')
+        except:
+            return False
+        mail_servers = sorted(mail_servers, key=itemgetter(0))
+        for _, mx in mail_servers:
+            s = SMTP(local_hostname = conf.smtp_hostname)
+            try:
+                ret_code, banner = s.connect(mx, 25)
+            except:
+                s.quit()
+                continue
+            if ret_code != 220:
+                s.quit()
+                continue
+            try:
+                s.starttls()
+            except:
+                if conf.smtp_email_tls_required:
+                    s.quit()
+                    continue
+            from_addr = conf.smtp_email_delim.join(info['from'])
+            to_addr = conf.smtp_email_delim.join(info['rcpt'])
+            message = self.stor.read(mid)
+            try:
+                s.sendmail(from_addr, [to_addr], message['message'])
+            except:
+                s.quit()
+                continue
+            s.quit()
+            return True
+        return False
+            
     
     def __freeze_(self, mid):
         info = self.stor.getinfo(mid)

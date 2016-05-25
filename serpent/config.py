@@ -3,12 +3,12 @@ class Config(object):
     pass
 
 conf = Config()
-conf.VERSION = '0.0.1'
+conf.VERSION = '0.1.0'
 conf.SRVNAME = 'Serpent'
 conf.srv_version = '%s %s' % (conf.SRVNAME, conf.VERSION)
 conf.local_domains = ['dom.lan']    # Список доменов, для которых будет приниматься почта
 conf.tls = True
-conf.tls_pem = '/home/inpos/Программы/git/pydev/serpent/serpent.pem'
+conf.tls_pem = './serpent.pem'
 conf.smtp_open_relay = False        # Разрешить ли пересылку откуда угодно куда угодно
 conf.smtp_email_delim = '@'
 conf.smtp_header = '''from [{sender_ip}] (helo={sender_host})
@@ -24,6 +24,7 @@ conf.smtp_message_size = 40                 # Размер в МБ
 conf.smtp_queue_check_period = 30           # Период запуска обработки очереди в минутах
 conf.smtp_queue_message_ttl = 3 * 24 * 60   # Время жизни сообщения в очереди в минутах
 conf.maildir_user_path = 'mailstore/%s/'
+conf.smtp_email_tls_required = True
 
 conf.imap_SENT = 'Sent'
 conf.imap_TRASH = 'Trash'
