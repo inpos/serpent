@@ -68,12 +68,10 @@ class IMAPMailbox(ExtendedMaildir):
         maildir.initializeMaildir(path)
         self.listeners = []
         self.path = path
+        self.path_msg_info = os.path.join(path, conf.imap_msg_info)
+        self.path_mbox_info = os.path.join(path, conf.imap_mbox_info)
         self.lastadded = None
-        if not os.path.exists(os.path.join(path, conf.imap_flags)):
-            self.__init_flags_()
-        else:
-            self.__load_flags_()
-            self.__check_flags()
+        self.__check_flags()
 
     def _start_monitor(self):
         self.notifier = inotify.INotify()
@@ -88,41 +86,28 @@ class IMAPMailbox(ExtendedMaildir):
             for l in self.listeners:
                 l.newMessages(self.getMessageCount(), self.getRecentCount())
 
-    def __init_flags_(self):
-        for fdir in ['new','cur']:
-            for fn in os.listdir(os.path.join(self.path, fdir)):
-                if fn not in self.flags['uid'].keys():
-                    self.flags['uid'][fn] = self.getUIDNext()
-                    if fdir == 'new':
-                        self.flags['flags'][fn] = []
-                    else:
-                        self.flags['flags'][fn] = misc.IMAP_FLAGS['SEEN']
-        self._save_flags()
-        self.__load_flags_()
-
-    def __load_flags_(self):
-        with SqliteDict(conf.imap_msg_info) as msg_info, SqliteDict(conf.imap_mbox_info) as mbox_info:
+    def __check_flags_(self):
+        with SqliteDict(self.path_msg_info) as msg_info, SqliteDict(self.path_mbox_info) as mbox_info:
             if 'subscribed' not in mbox_info.keys(): mbox_info['subscribed'] = False
             if 'uidvalidity' not in mbox_info.keys(): mbox_info['uidvalidity'] = random.randint(0, 2**32)
             if 'uidnext' not in mbox_info.keys(): mbox_info['uidnext'] = 1
+            mbox_info.commit()
             l = [l for l in self.__msg_list_()]
             for i in l:
                 fn = i.split('/')[-1]
                 if fn not in msg_info.keys():
-                    msg_info[fn] = {'uid': self.getUIDNext()}
+                    val1 = {'uid': self.getUIDNext()}
                     if i.split('/')[-2] == 'new':
-                        msg_info[fn]['flags'] = []
+                        val1['flags'] = []
                     else:
-                        msg_info[fn]['flags'] = [misc.IMAP_FLAGS['SEEN']]
+                        val1['flags'] = [misc.IMAP_FLAGS['SEEN']]
+                    msg_info[fn] = val1
+            msg_info.commit()
 
     def __count_flagged_msgs_(self, flag):
-        c = 0
-        self.__load_flags_()
-        for dir in ['new','cur']:
-            for fn in os.listdir(os.path.join(self.path, dir)):
-                if flag in self.flags['flags'][fn]:
-                    c += 1
-        return c
+        with SqliteDict(self.path_msg_info) as msg_info:
+            val1 = [0 for fn in msg_info.keys() if flag in msg_info[fn]['flags']]
+        return len(val1)
     
     def getHierarchicalDelimiter(self):
         return misc.IMAP_HDELIM
@@ -131,10 +116,9 @@ class IMAPMailbox(ExtendedMaildir):
         return misc.IMAP_FLAGS.values()
 
     def getMessageCount(self):
-        self.__load_flags_()
-        c = 0
-        c += len([n for n in self.__msg_list_() if misc.IMAP_FLAGS['DELETED'] not in self.flags['flags'][n.split('/')[-1]]])
-        return c
+        with SqliteDict(self.path_msg_info) as msg_info:
+            val1 = [0 for fn in msg_info.keys() if misc.IMAP_FLAGS['DELETED'] not in msg_info[fn]['flags']]
+        return len(val1)
 
     def getRecentCount(self):
         return self.__count_flagged_msgs_(misc.IMAP_FLAGS['RECENT'])
@@ -146,14 +130,14 @@ class IMAPMailbox(ExtendedMaildir):
         return True
 
     def getUIDValidity(self):
-        self.__load_flags_()
-        return self.flags['uidvalidity']
+        return SqliteDict(self.path_mbox_info)['uidvalidity']
     
     def getUIDNext(self):
-        self.__load_flags_()
-        self.flags['uidnext'] += 1
-        self._save_flags()
-        return self.flags['uidnext'] - 1
+        with SqliteDict(self.path_mbox_info) as mbox_info:
+            un = mbox_info['uidnext']
+            mbox_info['uidnext'] += 1
+            mbox_info.commit()
+        return un
     
     def getUID(self, num):
         return num
@@ -162,16 +146,15 @@ class IMAPMailbox(ExtendedMaildir):
         return self.appendMessage(message).addCallback(self._cbAddMessage, flags)
     
     def _cbAddMessage(self, obj, flags):
-        self.__load_flags_()
         path = self.lastadded
         self.lastadded = None
         fn = path.split('/')[-1]
-        self.flags['uid'][fn] = self.getUIDNext()
-        self.flags['flags'][fn] = flags
+        with SqliteDict(self.path_msg_info) as msg_info:
+            msg_info[fn] = {'uid': self.getUIDNext(), 'flags': flags}
+            msg_info.commit()
         if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
             new_path = os.path.join(self.path, 'cur', fn)
             os.rename(path, new_path)
-        self._save_flags()
 
     def __msg_list_(self):
         a = []
@@ -195,7 +178,7 @@ class IMAPMailbox(ExtendedMaildir):
     def fetch(self, messages, uid):
         return [[seq, MaildirMessage(seq,
                                      file(filename, 'rb').read(),
-                                     self.flags['flags'][filename.split('/')[-1]],
+                                     SqliteDict(self.path_msg_info)[filename.split('/')[-1]]['flags'],
                                      rfc822date())]
                 for seq, filename in self.__fetch_(messages, uid).iteritems()]
     def __fetch_(self, messages, uid):
@@ -203,15 +186,17 @@ class IMAPMailbox(ExtendedMaildir):
         if uid:
             messagesToFetch = {}
             if not messages.last:
-                messages.last = self.flags['uidnext']
-            for uid in messages:
-                if uid in self.flags['uid'].values():
-                    for name, _id in self.flags['uid'].iteritems():
-                        if uid == _id:
-                            if os.path.exists(os.path.join(self.path,'new', name)):
-                                messagesToFetch[uid] = os.path.join(self.path,'new', name)
-                            elif os.path.exists(os.path.join(self.path,'cur', name)):
-                                messagesToFetch[uid] = os.path.join(self.path,'cur', name)
+                messages.last = SqliteDict(self.path_mbox_info)['uidnext']
+            with SqliteDict(self.path_msg_info) as msg_info:
+                fn_uid = dict((fn, msg_info[fn]['uid']) for fn in msg_info.keys())
+                for uid in messages:
+                    if uid in fn_uid.values():
+                        for name, _id in fn_uid.iteritems():
+                            if uid == _id:
+                                if os.path.exists(os.path.join(self.path,'new', name)):
+                                    messagesToFetch[uid] = os.path.join(self.path,'new', name)
+                                elif os.path.exists(os.path.join(self.path,'cur', name)):
+                                    messagesToFetch[uid] = os.path.join(self.path,'cur', name)
         else:
             messagesToFetch = self._seqMessageSetToSeqDict(messages)
         return messagesToFetch
