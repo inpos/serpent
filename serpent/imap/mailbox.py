@@ -17,6 +17,8 @@ import os
 from serpent.config import conf
 from serpent import misc
 
+from sqlitedict import SqliteDict
+
 class LoopingTask(Thread):
     def __init__(self, func, event, interval):
         Thread.__init__(self)
@@ -99,36 +101,20 @@ class IMAPMailbox(ExtendedMaildir):
         self.__load_flags_()
 
     def __load_flags_(self):
-        try:
-            self.flags = load(file(os.path.join(self.path, conf.imap_flags), 'rb'))
-        except:
-            self.flags = {
-                          'flags': {},
-                          'subscribed': False,
-                          'uidvalidity': random.randint(0, 2**32),
-                          'uid': {},
-                          'uidnext': 1
-                          }
-            self._save_flags()
-            self.__init_flags_()
-    
-    def __check_flags(self):
-        l = [l for l in self.__msg_list_()]
-        for i in l:
-            if i.split('/')[-1] not in self.flags['uid'].keys() or i.split('/')[-1] not in self.flags['flags'].keys():
-                if i.split('/')[-2] == 'new':
-                    self.flags['flags'][i.split('/')[-1]] = []
-                else:
-                    self.flags['flags'][i.split('/')[-1]] = misc.IMAP_FLAGS['SEEN']
-                self.flags['uid'][i.split('/')[-1]] = self.getUIDNext()
-    
-    def _save_flags(self):
-        try:
-            with open(os.path.join(self.path, conf.imap_flags), 'wb') as f:
-                dump(self.flags, f, 2)
-        except:
-            pass
-    
+        with SqliteDict(conf.imap_msg_info) as msg_info, SqliteDict(conf.imap_mbox_info) as mbox_info:
+            if 'subscribed' not in mbox_info.keys(): mbox_info['subscribed'] = False
+            if 'uidvalidity' not in mbox_info.keys(): mbox_info['uidvalidity'] = random.randint(0, 2**32)
+            if 'uidnext' not in mbox_info.keys(): mbox_info['uidnext'] = 1
+            l = [l for l in self.__msg_list_()]
+            for i in l:
+                fn = i.split('/')[-1]
+                if fn not in msg_info.keys():
+                    msg_info[fn] = {'uid': self.getUIDNext()}
+                    if i.split('/')[-2] == 'new':
+                        msg_info[fn]['flags'] = []
+                    else:
+                        msg_info[fn]['flags'] = [misc.IMAP_FLAGS['SEEN']]
+
     def __count_flagged_msgs_(self, flag):
         c = 0
         self.__load_flags_()
