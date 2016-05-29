@@ -224,19 +224,18 @@ class IMAPMailbox(ExtendedMaildir):
         return d
     
     def expunge(self):
-        self.__load_flags_()
         uids = []
-        for path in self.__msg_list_():
-            fn = path.split('/')[-1]
-            if fn not in self.flags['uid']:
-                continue
-            uid = self.flags['uid'][fn]
-            if misc.IMAP_FLAGS['DELETED'] in self.flags['flags'][fn]:
-                os.remove(path)
-                del self.flags['uid'][fn]
-                del self.flags['flags'][fn]
-                self._save_flags()
-                uids.append(uid)
+        with SqliteDict(self.path_msg_info) as msg_info:
+            for path in self.__msg_list_():
+                fn = path.split('/')[-1]
+                if fn not in msg_info.keys():
+                    continue
+                uid = msg_info[fn]['uid']
+                if misc.IMAP_FLAGS['DELETED'] in msg_info[fn]['flags']:
+                    os.remove(path)
+                    del msg_info[fn]
+                    uids.append(uid)
+            msg_info.commit()
         return uids
     
     def addListener(self, listener):
