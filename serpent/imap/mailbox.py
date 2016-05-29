@@ -68,10 +68,10 @@ class IMAPMailbox(ExtendedMaildir):
         maildir.initializeMaildir(path)
         self.listeners = []
         self.path = path
-        self.path_msg_info = os.path.join(path, conf.imap_msg_info)
-        self.path_mbox_info = os.path.join(path, conf.imap_mbox_info)
+        self.msg_info = SqliteDict(os.path.join(path, conf.imap_msg_info))
+        self.mbox_info = SqliteDict(os.path.join(path, conf.imap_mbox_info))
         self.lastadded = None
-        self.__check_flags()
+        self.__check_flags_()
 
     def _start_monitor(self):
         self.notifier = inotify.INotify()
@@ -87,26 +87,35 @@ class IMAPMailbox(ExtendedMaildir):
                 l.newMessages(self.getMessageCount(), self.getRecentCount())
 
     def __check_flags_(self):
-        with SqliteDict(self.path_msg_info) as msg_info, SqliteDict(self.path_mbox_info) as mbox_info:
-            if 'subscribed' not in mbox_info.keys(): mbox_info['subscribed'] = False
-            if 'uidvalidity' not in mbox_info.keys(): mbox_info['uidvalidity'] = random.randint(0, 2**32)
-            if 'uidnext' not in mbox_info.keys(): mbox_info['uidnext'] = 1
-            mbox_info.commit()
-            l = [l for l in self.__msg_list_()]
-            for i in l:
-                fn = i.split('/')[-1]
-                if fn not in msg_info.keys():
-                    val1 = {'uid': self.getUIDNext()}
-                    if i.split('/')[-2] == 'new':
-                        val1['flags'] = []
-                    else:
-                        val1['flags'] = [misc.IMAP_FLAGS['SEEN']]
-                    msg_info[fn] = val1
-            msg_info.commit()
+        if 'subscribed' not in self.mbox_info.keys(): self.mbox_info['subscribed'] = False
+        if 'uidvalidity' not in self.mbox_info.keys(): self.mbox_info['uidvalidity'] = random.randint(0, 2**32)
+        if 'uidnext' not in self.mbox_info.keys(): self.mbox_info['uidnext'] = 1
+        self.mbox_info.commit(blocking=False)
+        l = [l for l in self.__msg_list_()]
+        for i in l:
+            fn = i.split('/')[-1]
+            if fn not in msg_info.keys():
+                val1 = {'uid': self.getUIDNext()}
+                if i.split('/')[-2] == 'new':
+                    val1['flags'] = []
+                else:
+                    val1['flags'] = [misc.IMAP_FLAGS['SEEN']]
+                self.msg_info[fn] = val1
+        self.msg_info.commit(blocking=False)
+
+    def subscribe(self):
+        self.mbox_info['subscribed'] = True
+        self.mbox_info.commit(blocking=False)
+
+    def unsubscribe(self):
+        self.mbox_info['subscribed'] = False
+        self.mbox_info.commit(blocking=False)
+    
+    def is_subscribed(self):
+        return self.mbox_info['subscribed']
 
     def __count_flagged_msgs_(self, flag):
-        with SqliteDict(self.path_msg_info) as msg_info:
-            val1 = [0 for fn in msg_info.keys() if flag in msg_info[fn]['flags']]
+        val1 = [0 for fn in self.msg_info.keys() if flag in self.msg_info[fn]['flags']]
         return len(val1)
     
     def getHierarchicalDelimiter(self):
@@ -116,8 +125,7 @@ class IMAPMailbox(ExtendedMaildir):
         return misc.IMAP_FLAGS.values()
 
     def getMessageCount(self):
-        with SqliteDict(self.path_msg_info) as msg_info:
-            val1 = [0 for fn in msg_info.keys() if misc.IMAP_FLAGS['DELETED'] not in msg_info[fn]['flags']]
+        val1 = [0 for fn in self.msg_info.keys() if misc.IMAP_FLAGS['DELETED'] not in self.msg_info[fn]['flags']]
         return len(val1)
 
     def getRecentCount(self):
@@ -130,13 +138,12 @@ class IMAPMailbox(ExtendedMaildir):
         return True
 
     def getUIDValidity(self):
-        return SqliteDict(self.path_mbox_info)['uidvalidity']
+        return self.mbox_info['uidvalidity']
     
     def getUIDNext(self):
-        with SqliteDict(self.path_mbox_info) as mbox_info:
-            un = mbox_info['uidnext']
-            mbox_info['uidnext'] += 1
-            mbox_info.commit()
+        un = self.mbox_info['uidnext']
+        self.mbox_info['uidnext'] += 1
+        self.mbox_info.commit(blocking=False)
         return un
     
     def getUID(self, num):
@@ -149,9 +156,8 @@ class IMAPMailbox(ExtendedMaildir):
         path = self.lastadded
         self.lastadded = None
         fn = path.split('/')[-1]
-        with SqliteDict(self.path_msg_info) as msg_info:
-            msg_info[fn] = {'uid': self.getUIDNext(), 'flags': flags}
-            msg_info.commit()
+        self.msg_info[fn] = {'uid': self.getUIDNext(), 'flags': flags}
+        self.msg_info.commit(blocking=False)
         if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
             new_path = os.path.join(self.path, 'cur', fn)
             os.rename(path, new_path)
@@ -178,64 +184,60 @@ class IMAPMailbox(ExtendedMaildir):
     def fetch(self, messages, uid):
         return [[seq, MaildirMessage(seq,
                                      file(filename, 'rb').read(),
-                                     SqliteDict(self.path_msg_info)[filename.split('/')[-1]]['flags'],
+                                     self.msg_info[filename.split('/')[-1]]['flags'],
                                      rfc822date())]
                 for seq, filename in self.__fetch_(messages, uid).iteritems()]
     def __fetch_(self, messages, uid):
-        self.__load_flags_()
         if uid:
             messagesToFetch = {}
             if not messages.last:
-                messages.last = SqliteDict(self.path_mbox_info)['uidnext']
-            with SqliteDict(self.path_msg_info) as msg_info:
-                fn_uid = dict((fn, msg_info[fn]['uid']) for fn in msg_info.keys())
-                for uid in messages:
-                    if uid in fn_uid.values():
-                        for name, _id in fn_uid.iteritems():
-                            if uid == _id:
-                                if os.path.exists(os.path.join(self.path,'new', name)):
-                                    messagesToFetch[uid] = os.path.join(self.path,'new', name)
-                                elif os.path.exists(os.path.join(self.path,'cur', name)):
-                                    messagesToFetch[uid] = os.path.join(self.path,'cur', name)
+                messages.last = self.mbox_info['uidnext']
+            fn_uid = dict((fn, self.msg_info[fn]['uid']) for fn in self.msg_info.keys())
+            for uid in messages:
+                if uid in fn_uid.values():
+                    for name, _id in fn_uid.iteritems():
+                        if uid == _id:
+                            if os.path.exists(os.path.join(self.path,'new', name)):
+                                messagesToFetch[uid] = os.path.join(self.path,'new', name)
+                            elif os.path.exists(os.path.join(self.path,'cur', name)):
+                                messagesToFetch[uid] = os.path.join(self.path,'cur', name)
         else:
             messagesToFetch = self._seqMessageSetToSeqDict(messages)
         return messagesToFetch
     def store(self, messages, flags, mode, uid):
         d = {}
-        with SqliteDict(self.path_msg_info) as msg_info:
-            for _id, path in self.__fetch_(messages, uid).iteritems():
-                filename = path.split('/')[-1]
-                if mode < 0:
-                    old_f = msg_info[filename]['flags']
-                    msg_info[filename]['flags'] = list(set(old_f).difference(set(flags)))
-                    if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'new':
-                        new_path = os.path.join(self.path, 'new', filename)
-                        os.rename(path, new_path)
-                elif mode == 0:
-                    msg_info[filename]['flags'] = flags
-                elif mode > 0:
-                    old_f = msg_info[filename]['flags']
-                    msg_info[filename]['flags'] = list(set(old_f).union(set(flags)))
-                    if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
-                        new_path = os.path.join(self.path, 'cur', filename)
-                        os.rename(path, new_path)
-                d[_id] = msg_info[filename]['flags']
-            msg_info.commit()
+        for _id, path in self.__fetch_(messages, uid).iteritems():
+            filename = path.split('/')[-1]
+            if mode < 0:
+                old_f = self.msg_info[filename]['flags']
+                self.msg_info[filename]['flags'] = list(set(old_f).difference(set(flags)))
+                if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'new':
+                    new_path = os.path.join(self.path, 'new', filename)
+                    os.rename(path, new_path)
+            elif mode == 0:
+                self.msg_info[filename]['flags'] = flags
+            elif mode > 0:
+                old_f = self.msg_info[filename]['flags']
+                self.msg_info[filename]['flags'] = list(set(old_f).union(set(flags)))
+                if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
+                    new_path = os.path.join(self.path, 'cur', filename)
+                    os.rename(path, new_path)
+            d[_id] = self.msg_info[filename]['flags']
+        msg_info.commit(blocking=False)
         return d
     
     def expunge(self):
         uids = []
-        with SqliteDict(self.path_msg_info) as msg_info:
-            for path in self.__msg_list_():
-                fn = path.split('/')[-1]
-                if fn not in msg_info.keys():
-                    continue
-                uid = msg_info[fn]['uid']
-                if misc.IMAP_FLAGS['DELETED'] in msg_info[fn]['flags']:
-                    os.remove(path)
-                    del msg_info[fn]
-                    uids.append(uid)
-            msg_info.commit()
+        for path in self.__msg_list_():
+            fn = path.split('/')[-1]
+            if fn not in self.msg_info.keys():
+                continue
+            uid = self.msg_info[fn]['uid']
+            if misc.IMAP_FLAGS['DELETED'] in self.msg_info[fn]['flags']:
+                os.remove(path)
+                del self.msg_info[fn]
+                uids.append(uid)
+        self.msg_info.commit(blocking=False)
         return uids
     
     def addListener(self, listener):

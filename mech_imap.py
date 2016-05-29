@@ -114,6 +114,8 @@ class IMAPUserAccount(object):
             move(os.path.join(self.dir, old), os.path.join(self.dir, new))
             IMAP_MBOX_REG[self.dir][new] = IMAP_MBOX_REG[self.dir][old]
             IMAP_MBOX_REG[self.dir][new].path = os.path.join(self.dir, new)
+            IMAP_MBOX_REG[self.dir][new].path_msg_info = os.path.join(self.dir, conf.imap_msg_info)
+            IMAP_MBOX_REG[self.dir][new].path_mbox_info = os.path.join(self.dir, conf.imap_mbox_info)
             del IMAP_MBOX_REG[self.dir][old]
         return True
 
@@ -121,20 +123,20 @@ class IMAPUserAccount(object):
         if isinstance(name, unicode):
             name = name.encode('imap4-utf-7')
         if name in IMAP_MBOX_REG[self.dir].keys():
-            IMAP_MBOX_REG[self.dir][name].flags['subscribed'] = True
-            IMAP_MBOX_REG[self.dir][name]._save_flags()
-    
+            IMAP_MBOX_REG[self.dir][name].subscribe()
+
     def unsubscribe(self, name):
+        if name in conf.imap_auto_mbox:
+            raise imap4.MailboxException, name
         if isinstance(name, unicode):
             name = name.encode('imap4-utf-7')
         if name in IMAP_MBOX_REG[self.dir].keys():
-            IMAP_MBOX_REG[self.dir][name].flags['subscribed'] = False
-            IMAP_MBOX_REG[self.dir][name]._save_flags()
-    
+            IMAP_MBOX_REG[self.dir][name].unsubscribe()
+
     def isSubscribed(self, name):
         if isinstance(name, unicode):
             name = name.encode('imap4-utf-7')
-        return IMAP_MBOX_REG[self.dir][name].flags['subscribed']
+        return IMAP_MBOX_REG[self.dir][name].is_subscribed()
     
     def _inferiorNames(self, name):
         name_l = name.split(IMAP_HDELIM)
@@ -159,11 +161,15 @@ class SerpentIMAPRealm(object):
 
 class IMAPServerProtocol(imap4.IMAP4Server):
     def lineReceived(self, line):
+        if isinstance(line, unicode):
+            line = line.encode('utf-8')
         print "CLIENT:", line
         imap4.IMAP4Server.lineReceived(self, line)
 
     def sendLine(self, line):
         imap4.IMAP4Server.sendLine(self, line)
+        if isinstance(line, unicode):
+            line = line.encode('utf-8')
         print "SERVER:", line
     
     def connectionLost(self, reason):
