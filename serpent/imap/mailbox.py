@@ -201,26 +201,26 @@ class IMAPMailbox(ExtendedMaildir):
             messagesToFetch = self._seqMessageSetToSeqDict(messages)
         return messagesToFetch
     def store(self, messages, flags, mode, uid):
-        self.__load_flags_()
         d = {}
-        for _id, path in self.__fetch_(messages, uid).iteritems():
-            filename = path.split('/')[-1]
-            if mode < 0:
-                old_f = self.flags['flags'][filename]
-                self.flags['flags'][filename] = list(set(old_f).difference(set(flags)))
-                if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'new':
-                    new_path = os.path.join(self.path, 'new', filename)
-                    os.rename(path, new_path)
-            elif mode == 0:
-                self.flags["flags"][filename] = flags
-            elif mode > 0:
-                old_f = self.flags['flags'][filename]
-                self.flags['flags'][filename] = list(set(old_f).union(set(flags)))
-                if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
-                    new_path = os.path.join(self.path, 'cur', filename)
-                    os.rename(path, new_path)
-            self._save_flags()
-            d[_id] = self.flags['flags'][filename]
+        with SqliteDict(self.path_msg_info) as msg_info:
+            for _id, path in self.__fetch_(messages, uid).iteritems():
+                filename = path.split('/')[-1]
+                if mode < 0:
+                    old_f = msg_info[filename]['flags']
+                    msg_info[filename]['flags'] = list(set(old_f).difference(set(flags)))
+                    if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'new':
+                        new_path = os.path.join(self.path, 'new', filename)
+                        os.rename(path, new_path)
+                elif mode == 0:
+                    msg_info[filename]['flags'] = flags
+                elif mode > 0:
+                    old_f = msg_info[filename]['flags']
+                    msg_info[filename]['flags'] = list(set(old_f).union(set(flags)))
+                    if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
+                        new_path = os.path.join(self.path, 'cur', filename)
+                        os.rename(path, new_path)
+                d[_id] = msg_info[filename]['flags']
+            msg_info.commit()
         return d
     
     def expunge(self):
