@@ -242,9 +242,11 @@ class IMAPMailbox(ExtendedMaildir):
     
     def addListener(self, listener):
         self.listeners.append(listener)
+        return True
 
     def removeListener(self, listener):
         self.listeners.remove(listener)
+        return True
     
     def requestStatus(self, names):
         return imap4.statusRequestHelper(self, names)
