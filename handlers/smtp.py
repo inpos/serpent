@@ -1,7 +1,7 @@
 from socketserver import StreamRequestHandler
 
 ERR_CODE = {
-            220 : ''
+            220 : '',
             500 : 'Syntax error, command unrecognized',
             }
 
