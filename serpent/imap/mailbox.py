@@ -10,7 +10,7 @@ from threading import Thread
 
 import random
 import email
-from pickle import load, dump
+
 from StringIO import StringIO
 import os
 
@@ -38,7 +38,7 @@ class SerpentAppendMessageTask(maildir._MaildirMailboxAppendMessageTask):
             try:
                 self.osrename(self.tmpname, newname)
                 break
-            except OSError, (err, estr):
+            except OSError, (err, _):
                 import errno
                 # if the newname exists, retry with a new newname.
                 if err != errno.EEXIST:
@@ -94,7 +94,7 @@ class IMAPMailbox(ExtendedMaildir):
         l = [l for l in self.__msg_list_()]
         for i in l:
             fn = i.split('/')[-1]
-            if fn not in msg_info.keys():
+            if fn not in self.msg_info.keys():
                 val1 = {'uid': self.getUIDNext()}
                 if i.split('/')[-2] == 'new':
                     val1['flags'] = []
@@ -223,7 +223,7 @@ class IMAPMailbox(ExtendedMaildir):
                     new_path = os.path.join(self.path, 'cur', filename)
                     os.rename(path, new_path)
             d[_id] = self.msg_info[filename]['flags']
-        msg_info.commit(blocking=False)
+        self.msg_info.commit(blocking=False)
         return d
     
     def expunge(self):
@@ -258,7 +258,9 @@ class IMAPMailbox(ExtendedMaildir):
         self.notifier.stopReading()
         self.notifier.loseConnection()
         if conf.imap_expunge_on_close:
-            l = self.expunge()
+            self.expunge()
+        self.mbox_info.close()
+        self.msg_info.close()
 
 class MaildirMessagePart(object):
     implements(imap4.IMessagePart)

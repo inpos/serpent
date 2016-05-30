@@ -82,7 +82,7 @@ class IMAPUserAccount(object):
         if pathspec in conf.imap_auto_mbox:
             raise imap4.MailboxException, pathspec
         if pathspec not in IMAP_MBOX_REG[self.dir].keys():
-            raise imap4.MailboxException("No such mailbox")
+            raise imap4.NoSuchMailbox, pathspec
         inferiors = self._inferiorNames(pathspec)
         if r'\Noselect' in IMAP_MBOX_REG[self.dir][pathspec].getFlags():
             # Check for hierarchically inferior mailboxes with this one
@@ -111,19 +111,22 @@ class IMAPUserAccount(object):
             if new in IMAP_MBOX_REG[self.dir].keys():
                 raise imap4.MailboxCollision, new
         for (old, new) in inferiors:
-            move(os.path.join(self.dir, old), os.path.join(self.dir, new))
-            IMAP_MBOX_REG[self.dir][new] = IMAP_MBOX_REG[self.dir][old]
-            IMAP_MBOX_REG[self.dir][new].path = os.path.join(self.dir, new)
-            IMAP_MBOX_REG[self.dir][new].path_msg_info = os.path.join(self.dir, conf.imap_msg_info)
-            IMAP_MBOX_REG[self.dir][new].path_mbox_info = os.path.join(self.dir, conf.imap_mbox_info)
+            m = IMAP_MBOX_REG[self.dir][old]
             del IMAP_MBOX_REG[self.dir][old]
-        return True
+            for l in m.listeners: m.listeners.remove(l)
+            m.close()
+            move(os.path.join(self.dir, old), os.path.join(self.dir, new))
+            IMAP_MBOX_REG[self.dir][new] = self._getMailbox(new)
+            IMAP_MBOX_REG[self.dir][new].subscribe()
+        return IMAP_MBOX_REG[self.dir][newname]
 
     def subscribe(self, name):
         if isinstance(name, unicode):
             name = name.encode('imap4-utf-7')
         if name in IMAP_MBOX_REG[self.dir].keys():
             IMAP_MBOX_REG[self.dir][name].subscribe()
+            return True
+        raise imap4.NoSuchMailbox, name
 
     def unsubscribe(self, name):
         if name in conf.imap_auto_mbox:
@@ -132,6 +135,8 @@ class IMAPUserAccount(object):
             name = name.encode('imap4-utf-7')
         if name in IMAP_MBOX_REG[self.dir].keys():
             IMAP_MBOX_REG[self.dir][name].unsubscribe()
+            return True
+        raise imap4.NoSuchMailbox, name
 
     def isSubscribed(self, name):
         if isinstance(name, unicode):
