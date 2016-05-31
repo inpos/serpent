@@ -60,16 +60,17 @@ class SmtpFileStore(object):
 
 class MailDirStore(object):
     def __init__(self):
-        from serpent.imap import mailbox
+        import mailbox
         self.mbox = mailbox
     def deliver(self, user, message):
         mdir = os.path.join(conf.app_dir, conf.maildir_user_path % user)
         if not os.path.exists(mdir):
             os.makedirs(mdir)
         inbox = os.path.join(mdir, 'INBOX')
-        mailbox = self.mbox.IMAPMailbox(inbox)
+        mailbox = self.mbox.Maildir(inbox)
+        msg = self.mbox.MaildirMessage(message)
         try:
-            mailbox.addMessage(message, [IMAP_FLAGS['RECENT']])
+            mailbox.add(msg, [])
             return True
         except:
             raise
