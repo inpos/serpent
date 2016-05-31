@@ -4,7 +4,6 @@ import os
 import pickle
 from glob import iglob
 from serpent.config import conf
-from serpent.misc import IMAP_FLAGS
 
 class SmtpFileStore(object):
     def __init__(self, dpath):

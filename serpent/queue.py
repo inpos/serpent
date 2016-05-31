@@ -51,7 +51,7 @@ class SmtpQueue(object):
         for _, mx in mail_servers:
             s = SMTP(local_hostname = conf.smtp_hostname)
             try:
-                ret_code, banner = s.connect(mx, 25)
+                ret_code, _ = s.connect(mx, 25)
             except:
                 s.quit()
                 continue

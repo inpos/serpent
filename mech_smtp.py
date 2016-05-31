@@ -5,7 +5,7 @@ from serpent import rules
 from serpent.queue import squeue
 
 
-from email.Header import Header
+from email.header import Header
 from zope.interface import implements
 
 from twisted.internet import defer, ssl
@@ -113,7 +113,7 @@ class SerpentSMTPFactory(smtp.SMTPFactory):
     def buildProtocol(self, addr):
         contextFactory = None
         if conf.tls:
-            tls_data = file(conf.tls_pem, 'rb').read()
+            tls_data = open(conf.tls_pem, 'rb').read()
             cert = ssl.PrivateCertificate.loadPEM(tls_data)
             contextFactory = cert.options()
         p = smtp.SMTPFactory.buildProtocol(self, addr)
