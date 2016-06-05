@@ -9,7 +9,7 @@ from twisted.internet import protocol, ssl
 from twisted.mail import imap4
 
 from serpent.config import conf
-from serpent.imap.mailbox import IMAPMailbox
+from serpent.imap.mailbox import ExtendedMaildir
 from serpent.misc import IMAP_HDELIM, IMAP_MBOX_REG, IMAP_ACC_CONN_NUM
 from shutil import rmtree, move
 
@@ -29,7 +29,7 @@ class IMAPUserAccount(object):
             if m not in IMAP_MBOX_REG[self.dir].keys():
                 if isinstance(m, str):
                     m = m.encode('imap4-utf-7')
-                IMAP_MBOX_REG[self.dir][m] = IMAPMailbox(os.path.join(self.dir, m))
+                IMAP_MBOX_REG[self.dir][m] = ExtendedMaildir(os.path.join(self.dir, m))
                 IMAP_MBOX_REG[self.dir][m]._start_monitor()
                 self.subscribe(m)
 
@@ -37,7 +37,7 @@ class IMAPUserAccount(object):
         if isinstance(path, str):
             path = path.encode('imap4-utf-7')
         fullPath = os.path.join(self.dir, path)
-        mbox = IMAPMailbox(fullPath)
+        mbox = ExtendedMaildir(fullPath)
         mbox._start_monitor()
         return mbox
 
