@@ -1,4 +1,4 @@
-from mailbox import Maildir
+from mailbox import Maildir, MaildirMessage
 import os
 
 class ExtendedMaildir(Maildir):
