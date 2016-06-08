@@ -2,7 +2,7 @@
 
 import os
 
-from zope.interface import implements
+from zope.interface import implementer
 
 from twisted.cred import portal
 from twisted.internet import protocol, ssl
@@ -13,9 +13,8 @@ from serpent.imap.mailbox import ExtendedMaildir
 from serpent.misc import IMAP_HDELIM, IMAP_MBOX_REG, IMAP_ACC_CONN_NUM
 from shutil import rmtree, move
 
+@implementer(imap4.IAccount)
 class IMAPUserAccount(object):
-    implements(imap4.IAccount)
-    
     def __init__(self, mdir):
         if not os.path.exists(mdir):
             os.makedirs(mdir)
@@ -146,9 +145,8 @@ class IMAPUserAccount(object):
                 inferiors.append(infname)
         return inferiors
 
+@implementer(portal.IRealm)
 class SerpentIMAPRealm(object):
-    implements(portal.IRealm)
-
     def requestAvatar(self, avatarId, mind, *interfaces):
         if imap4.IAccount not in interfaces:
             raise NotImplementedError(

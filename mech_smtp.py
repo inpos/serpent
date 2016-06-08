@@ -6,7 +6,7 @@ from serpent.queue import squeue
 
 
 from email.header import Header
-from zope.interface import implements
+from zope.interface import implementer
 
 from twisted.internet import defer, ssl
 from twisted.mail import smtp
@@ -16,10 +16,8 @@ from twisted.cred.portal import IRealm, Portal
 
 
 
-
+@implementer(smtp.IMessageDelivery)
 class SmtpMessageDelivery:
-    implements(smtp.IMessageDelivery)
-    
     def __init__(self, avatarId = None):
         self.avatarId = avatarId
 
@@ -59,9 +57,8 @@ class SmtpMessageDelivery:
                        }
             return lambda: SmtpMessage(msg)
 
+@implementer(smtp.IMessage)
 class SmtpMessage:
-    implements(smtp.IMessage)
-    
     def __init__(self, msg):
         self.lines = []
         self.size = 0
@@ -126,10 +123,8 @@ class SerpentSMTPFactory(smtp.SMTPFactory):
         return p
 
 
-
+@implementer(IRealm)
 class SmtpRealm:
-    implements(IRealm)
-
     def requestAvatar(self, avatarId, mind, *interfaces):
         if smtp.IMessageDelivery in interfaces:
             return smtp.IMessageDelivery, SmtpMessageDelivery(avatarId), lambda: None

@@ -6,7 +6,7 @@ from twisted.python import failure
 from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
 
-from zope.interface import implements
+from zope.interface import implementer
 
 from mech_smtp import SerpentSMTPFactory, smtp_portal
 from mech_imap import SerpentIMAPFactory, imap_portal
@@ -14,10 +14,10 @@ from serpent.usrpwd import dbs
 from serpent.queue import squeue
 from serpent.config import conf
 
+@implementer(ICredentialsChecker)
 class CredChecker(object):
     '''Класс проверки данных авторизации.
 Параметром в конструктор передаётся список (list()) объектов баз пользователей.'''
-    implements(ICredentialsChecker)
     credentialInterfaces = (credentials.IUsernamePassword,
                             credentials.IUsernameHashedPassword)
     
