@@ -118,15 +118,15 @@ class IMAPUserAccount(object):
             move(os.path.join(self.dir, old), os.path.join(self.dir, new))
             IMAP_MBOX_REG[self.dir][new] = self._getMailbox(new)
             IMAP_MBOX_REG[self.dir][new].subscribe()
-        return IMAP_MBOX_REG[self.dir][newname]
+        return True
 
     def subscribe(self, name):
         if isinstance(name, unicode):
             name = name.encode('imap4-utf-7')
         if name in IMAP_MBOX_REG[self.dir].keys():
             IMAP_MBOX_REG[self.dir][name].subscribe()
-            return True
-        raise imap4.NoSuchMailbox, name
+        return True
+        #raise imap4.NoSuchMailbox, name
 
     def unsubscribe(self, name):
         if name in conf.imap_auto_mbox:
@@ -135,8 +135,8 @@ class IMAPUserAccount(object):
             name = name.encode('imap4-utf-7')
         if name in IMAP_MBOX_REG[self.dir].keys():
             IMAP_MBOX_REG[self.dir][name].unsubscribe()
-            return True
-        raise imap4.NoSuchMailbox, name
+        return True
+        #raise imap4.NoSuchMailbox, name
 
     def isSubscribed(self, name):
         if isinstance(name, unicode):

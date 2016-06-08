@@ -8,7 +8,7 @@ conf.SRVNAME = 'Serpent'
 conf.srv_version = '%s %s' % (conf.SRVNAME, conf.VERSION)
 conf.local_domains = ['dom.lan']    # Список доменов, для которых будет приниматься почта
 conf.tls = True
-conf.tls_pem = './serpent.pem'
+conf.tls_pem = u'./serpent.pem'
 conf.smtp_open_relay = False        # Разрешить ли пересылку откуда угодно куда угодно
 conf.smtp_email_delim = '@'
 conf.smtp_header = '''from [{sender_ip}] (helo={sender_host})
