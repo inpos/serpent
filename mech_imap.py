@@ -9,7 +9,7 @@ from twisted.internet import protocol, ssl
 from twisted.mail import imap4
 
 from serpent.config import conf
-from serpent.imap.mailbox import IMAPMailbox
+from serpent.imap.mbox import IMAPMailbox
 from serpent.misc import IMAP_HDELIM, IMAP_MBOX_REG, IMAP_ACC_CONN_NUM
 from shutil import rmtree, move
 

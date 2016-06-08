@@ -60,9 +60,9 @@ class SmtpFileStore(object):
 
 class MailDirStore(object):
     def __init__(self):
-        from serpent.imap import mailbox
+        from serpent.imap import mbox
         from mailbox import MaildirMessage
-        self.mbox = mailbox
+        self.mbox = mbox
         self.mbox.MaildirMessage = MaildirMessage
     def deliver(self, user, message):
         mdir = os.path.join(conf.app_dir, conf.maildir_user_path % user)
