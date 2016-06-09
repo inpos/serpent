@@ -25,11 +25,13 @@ class IMAPUserAccount(object):
         else:
             IMAP_MBOX_REG[self.dir] = {}
             IMAP_MBOX_REG[self.dir][IMAP_ACC_CONN_NUM] = 0
-        for m in conf.imap_auto_mbox:
+        for m in conf.imap_auto_mbox.keys():
+            name = m
+            if isinstance(m, unicode):
+                m = m.encode('imap4-utf-7')
             if m not in IMAP_MBOX_REG[self.dir].keys():
-                if isinstance(m, unicode):
-                    m = m.encode('imap4-utf-7')
-                IMAP_MBOX_REG[self.dir][m] = IMAPMailbox(os.path.join(self.dir, m))
+                IMAP_MBOX_REG[self.dir][m] = self.create(m)
+                IMAP_MBOX_REG[self.dir][m].setSpecial(conf.imap_auto_mbox[name])
                 IMAP_MBOX_REG[self.dir][m]._start_monitor()
                 self.subscribe(m)
 
@@ -54,7 +56,7 @@ class IMAPUserAccount(object):
             if path in os.listdir(self.dir):
                 return self.create(path)
             else:
-                raise imap4.NoSuchMailbox, path
+                return None
     
     def addMailbox(self, name, mbox = None):
         if mbox:
@@ -71,15 +73,19 @@ class IMAPUserAccount(object):
                 if subpath not in IMAP_MBOX_REG[self.dir].keys():
                     try:
                         IMAP_MBOX_REG[self.dir][subpath] = self._getMailbox(IMAP_HDELIM.join(paths[:accum]))
+                        IMAP_MBOX_REG[self.dir][subpath].subscribe()
                     except imap4.MailboxCollision:
                         pass
+                IMAP_MBOX_REG[self.dir][subpath].hasChildren()
             IMAP_MBOX_REG[self.dir][pathspec] = self._getMailbox(pathspec)
+            IMAP_MBOX_REG[self.dir][pathspec].hasNoChildren()
+            IMAP_MBOX_REG[self.dir][pathspec].subscribe()
         return IMAP_MBOX_REG[self.dir][pathspec]
     
     def delete(self, pathspec):
         if isinstance(pathspec, unicode):
             pathspec = pathspec.encode('imap4-utf-7')
-        if pathspec in conf.imap_auto_mbox:
+        if pathspec in conf.imap_auto_mbox.keys():
             raise imap4.MailboxException, pathspec
         if pathspec not in IMAP_MBOX_REG[self.dir].keys():
             raise imap4.NoSuchMailbox, pathspec
@@ -98,7 +104,7 @@ class IMAPUserAccount(object):
         return True
 
     def rename(self, oldname, newname):
-        if oldname in conf.imap_auto_mbox:
+        if oldname in conf.imap_auto_mbox.keys():
             raise imap4.MailboxException, oldname
         if isinstance(oldname, unicode):
             oldname = oldname.encode('imap4-utf-7')
@@ -111,13 +117,13 @@ class IMAPUserAccount(object):
             if new in IMAP_MBOX_REG[self.dir].keys():
                 raise imap4.MailboxCollision, new
         for (old, new) in inferiors:
-            m = IMAP_MBOX_REG[self.dir][old]
-            del IMAP_MBOX_REG[self.dir][old]
-            for l in m.listeners: m.listeners.remove(l)
-            m.close()
+            IMAP_MBOX_REG[self.dir][old]._stop_monitor()
             move(os.path.join(self.dir, old), os.path.join(self.dir, new))
-            IMAP_MBOX_REG[self.dir][new] = self._getMailbox(new)
-            IMAP_MBOX_REG[self.dir][new].subscribe()
+            IMAP_MBOX_REG[self.dir][new] = IMAP_MBOX_REG[self.dir][old]
+            IMAP_MBOX_REG[self.dir][new].path = os.path.join(self.dir, new)
+            IMAP_MBOX_REG[self.dir][new].open_flags()
+            IMAP_MBOX_REG[self.dir][new]._start_monitor()
+            del IMAP_MBOX_REG[self.dir][old]
         return True
 
     def subscribe(self, name):
@@ -129,8 +135,9 @@ class IMAPUserAccount(object):
         #raise imap4.NoSuchMailbox, name
 
     def unsubscribe(self, name):
-        if name in conf.imap_auto_mbox:
-            raise imap4.MailboxException, name
+        if name in conf.imap_auto_mbox.keys():
+            return False
+        #    raise imap4.MailboxException, name
         if isinstance(name, unicode):
             name = name.encode('imap4-utf-7')
         if name in IMAP_MBOX_REG[self.dir].keys():
@@ -141,7 +148,10 @@ class IMAPUserAccount(object):
     def isSubscribed(self, name):
         if isinstance(name, unicode):
             name = name.encode('imap4-utf-7')
-        return IMAP_MBOX_REG[self.dir][name].is_subscribed()
+        if name in IMAP_MBOX_REG[self.dir].keys():
+            return IMAP_MBOX_REG[self.dir][name].is_subscribed()
+        else:
+            raise imap4.NoSuchMailbox, name
     
     def _inferiorNames(self, name):
         name_l = name.split(IMAP_HDELIM)
@@ -288,6 +298,14 @@ class IMAPServerProtocol(imap4.IMAP4Server):
         self.sendPositiveResponse(tag, 'STATUS complete')
     def __ebStatus(self, failure, tag, box):
         self.sendBadResponse(tag, 'STATUS %s failed: %s' % (box, str(failure.value)))
+    def _cbListWork(self, mailboxes, tag, sub, cmdName):
+        for (name, box) in mailboxes:
+            if not sub or self.account.isSubscribed(name):
+                flags = box.getMboxFlags()
+                delim = box.getHierarchicalDelimiter()
+                resp = (imap4.DontQuoteMe(cmdName), map(imap4.DontQuoteMe, flags), delim, name.encode('imap4-utf-7'))
+                self.sendUntaggedResponse(imap4.collapseNestedLists(resp))
+        self.sendPositiveResponse(tag, '%s completed' % (cmdName,))
 
 ################################################################################
 
@@ -302,6 +320,7 @@ class SerpentIMAPFactory(protocol.Factory):
             cert = ssl.PrivateCertificate.loadPEM(tls_data)
             contextFactory = cert.options()
         p = IMAPServerProtocol(contextFactory = contextFactory)
+        p.setTimeout(conf.imap_connection_timeout)
         if conf.tls:
             p.canStartTLS = True
         p.IDENT = '%s ready' % conf.SRVNAME

@@ -68,10 +68,13 @@ class IMAPMailbox(ExtendedMaildir):
         maildir.initializeMaildir(path)
         self.listeners = []
         self.path = path
-        self.msg_info = SqliteDict(os.path.join(path, conf.imap_msg_info))
-        self.mbox_info = SqliteDict(os.path.join(path, conf.imap_mbox_info))
+        self.open_flags()
         self.lastadded = None
         self.__check_flags_()
+    
+    def open_flags(self):
+        self.msg_info = SqliteDict(os.path.join(self.path, conf.imap_msg_info))
+        self.mbox_info = SqliteDict(os.path.join(self.path, conf.imap_mbox_info))
 
     def _start_monitor(self):
         self.notifier = inotify.INotify()
@@ -81,6 +84,10 @@ class IMAPMailbox(ExtendedMaildir):
         self.notifier.watch(filepath.FilePath(os.path.join(self.path,'cur')),
                    callbacks=[self._new_files])
 
+    def _stop_monitor(self):
+        self.notifier.stopReading()
+        self.notifier.loseConnection()
+
     def _new_files(self, wo, path, code):
         if code == inotify.IN_MOVED_TO or code == inotify.IN_DELETE:
             for l in self.listeners:
@@ -88,6 +95,8 @@ class IMAPMailbox(ExtendedMaildir):
 
     def __check_flags_(self):
         if 'subscribed' not in self.mbox_info.keys(): self.mbox_info['subscribed'] = False
+        if 'flags' not in self.mbox_info.keys(): self.mbox_info['flags'] = []
+        if 'special' not in self.mbox_info.keys(): self.mbox_info['special'] = ''
         if 'uidvalidity' not in self.mbox_info.keys(): self.mbox_info['uidvalidity'] = random.randint(0, 2**32)
         if 'uidnext' not in self.mbox_info.keys(): self.mbox_info['uidnext'] = 1
         self.mbox_info.commit(blocking=False)
@@ -121,15 +130,53 @@ class IMAPMailbox(ExtendedMaildir):
     def getHierarchicalDelimiter(self):
         return misc.IMAP_HDELIM
 
+    def setSpecial(self, special):
+        self.mbox_info['special'] = special
+        self.mbox_info.commit(blocking=False)
+
     def getFlags(self):
-        return misc.IMAP_FLAGS.values()
+        return sorted(misc.IMAP_FLAGS.values())
+    
+    def getMboxFlags(self):
+        f = list(self.mbox_info['flags'])
+        if self.mbox_info['special'] != '': f.append(self.mbox_info['special'])
+        return f
+    
+    def addFlag(self, flag):
+        self.mbox_info['flags'] = list(set(self.mbox_info['flags']).union([flag]))
+        self.mbox_info.commit(blocking=False)
+    
+    def removeFlag(self, flag):
+        self.mbox_info['flags'] = list(set(self.mbox_info['flags']).difference([flag]))
+        self.mbox_info.commit(blocking=False)
+    
+    def hasChildren(self):
+        flags = self.getFlags()
+        if misc.MBOX_FLAGS['HASCHILDREN'] not in flags:
+            self.addFlag(misc.MBOX_FLAGS['HASCHILDREN'])
+        if misc.MBOX_FLAGS['HASNOCHILDREN'] in flags:
+            self.removeFlag(misc.MBOX_FLAGS['HASNOCHILDREN'])
+    def hasNoChildren(self):
+        flags = self.getFlags()
+        if misc.MBOX_FLAGS['HASNOCHILDREN'] not in flags:
+            self.addFlag(misc.MBOX_FLAGS['HASNOCHILDREN'])
+        if misc.MBOX_FLAGS['HASCHILDREN'] in flags:
+            self.removeFlag(misc.MBOX_FLAGS['HASCHILDREN'])
 
     def getMessageCount(self):
         val1 = [0 for fn in self.msg_info.keys() if misc.IMAP_FLAGS['DELETED'] not in self.msg_info[fn]['flags']]
         return len(val1)
 
     def getRecentCount(self):
-        return self.__count_flagged_msgs_(misc.IMAP_FLAGS['RECENT'])
+        c = 0
+        for fn in self.msg_info.keys():
+            if misc.IMAP_FLAGS['RECENT'] in self.msg_info[fn]['flags']:
+                c += 1
+                info = self.msg_info[fn]
+                info['flags'] = set(info['flags']).difference(set([misc.IMAP_FLAGS['RECENT']]))
+                self.msg_info[fn] = info
+        self.msg_info.commit(blocking=False)
+        return c
     
     def getUnseenCount(self):
         return self.getMessageCount() - self.__count_flagged_msgs_(misc.IMAP_FLAGS['SEEN'])
@@ -209,16 +256,20 @@ class IMAPMailbox(ExtendedMaildir):
         for _id, path in self.__fetch_(messages, uid).iteritems():
             filename = path.split('/')[-1]
             if mode < 0:
-                old_f = self.msg_info[filename]['flags']
-                self.msg_info[filename]['flags'] = list(set(old_f).difference(set(flags)))
+                old_f = self.msg_info[filename]
+                old_f['flags'] = list(set(old_f['flags']).difference(set(flags)))
+                self.msg_info[filename] = old_f
                 if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'new':
                     new_path = os.path.join(self.path, 'new', filename)
                     os.rename(path, new_path)
             elif mode == 0:
-                self.msg_info[filename]['flags'] = flags
+                old_f = self.msg_info[filename]
+                old_f['flags'] = flags
+                self.msg_info[filename] = old_f
             elif mode > 0:
-                old_f = self.msg_info[filename]['flags']
-                self.msg_info[filename]['flags'] = list(set(old_f).union(set(flags)))
+                old_f = self.msg_info[filename]
+                old_f['flags'] = list(set(old_f['flags']).union(set(flags)))
+                self.msg_info[filename] = old_f
                 if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
                     new_path = os.path.join(self.path, 'cur', filename)
                     os.rename(path, new_path)
@@ -255,12 +306,10 @@ class IMAPMailbox(ExtendedMaildir):
         pass
 
     def close(self):
-        self.notifier.stopReading()
-        self.notifier.loseConnection()
-        if conf.imap_expunge_on_close:
-            self.expunge()
-        self.mbox_info.close()
-        self.msg_info.close()
+        if len(self.listeners) == 0:
+            self._stop_monitor() 
+            if conf.imap_expunge_on_close:
+                self.expunge()
 
 class MaildirMessagePart(object):
     implements(imap4.IMessagePart)
