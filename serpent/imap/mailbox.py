@@ -299,9 +299,7 @@ class IMAPMailbox(ExtendedMaildir):
         pass
 
     def close(self):
-        print('!!! simple closing %s' % (self.path,))
         if len(self.listeners) == 0:
-            print('!!! Closing %s !!!' % (self.path,))
             self._stop_monitor() 
             if conf.imap_expunge_on_close:
                 self.expunge()

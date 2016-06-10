@@ -20,19 +20,18 @@ class IMAPUserAccount(object):
         if not os.path.exists(mdir):
             os.makedirs(mdir)
         self.dir = mdir
-        if self.dir in IMAP_MBOX_REG.keys():
+        if self.dir in IMAP_MBOX_REG.iterkeys():
             IMAP_MBOX_REG[self.dir][IMAP_ACC_CONN_NUM] += 1
         else:
             IMAP_MBOX_REG[self.dir] = {}
-            IMAP_MBOX_REG[self.dir][IMAP_ACC_CONN_NUM] = 0
+            IMAP_MBOX_REG[self.dir][IMAP_ACC_CONN_NUM] = 1
         for m in conf.imap_auto_mbox.keys():
             name = m
             if isinstance(m, unicode):
                 m = m.encode('imap4-utf-7')
-            if m not in IMAP_MBOX_REG[self.dir].keys():
+            if m not in IMAP_MBOX_REG[self.dir].iterkeys():
                 IMAP_MBOX_REG[self.dir][m] = self.create(m)
                 IMAP_MBOX_REG[self.dir][m].setSpecial(conf.imap_auto_mbox[name])
-                IMAP_MBOX_REG[self.dir][m]._start_monitor()
                 self.subscribe(m)
 
     def _getMailbox(self, path):
@@ -189,25 +188,27 @@ class IMAPServerProtocol(imap4.IMAP4Server):
     
     def connectionLost(self, reason):
         self.setTimeout(None)
+        self.transport.loseConnection()
         if self.account and self.account.dir in IMAP_MBOX_REG.iterkeys():
-            #IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] -= 1
-            #if IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] <= 0:
-            #    for m in IMAP_MBOX_REG[self.account.dir].iterkeys():
-            #        if m == IMAP_ACC_CONN_NUM:
-            #            continue
-            #        IMAP_MBOX_REG[self.account.dir][m].listeners = []
-            #        IMAP_MBOX_REG[self.account.dir][m].close()
-            #        del IMAP_MBOX_REG[self.account.dir][m]
-            #    del IMAP_MBOX_REG[self.account.dir]
-            
-            if self.mbox:
-                print('+++ lost connection to %s' % (self.mbox.path,))
-                self.mbox.removeListener(self)
-                self.mbox.close()
-                if self.mbox.closed:
-                    del IMAP_MBOX_REG[self.account.dir][self.mbox.path.split('/')[-1]]
-                self.account = None
-    
+            IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] -= 1
+            if IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] <= 0:
+                for m in IMAP_MBOX_REG[self.account.dir].keys():
+                    if m == IMAP_ACC_CONN_NUM:
+                        continue
+                    for l in IMAP_MBOX_REG[self.account.dir][m].listeners:
+                        l.transport.loseConnection()
+                        IMAP_MBOX_REG[self.account.dir][m].removeListener(l)
+                    IMAP_MBOX_REG[self.account.dir][m].close()
+                    if IMAP_MBOX_REG[self.account.dir][m].closed:
+                        del IMAP_MBOX_REG[self.account.dir][m]
+                if IMAP_MBOX_REG[self.account.dir].keys() == []:
+                    del IMAP_MBOX_REG[self.account.dir]
+            self.account = None
+    def timeoutConnection(self):
+        self.sendLine('* BYE Autologout; connection idle too long')
+        self.connectionLost('timeout')
+        self.state = 'timeout'
+        
     def _parseMbox(self, name):
         if isinstance(name, unicode):
             return name
@@ -216,6 +217,24 @@ class IMAPServerProtocol(imap4.IMAP4Server):
         except:
             #log.err()
             raise imap4.IllegalMailboxEncoding(name)
+    
+    def do_CLOSE(self, tag):
+        d = None
+        cmbx = imap4.ICloseableMailbox(self.mbox, None)
+        if cmbx is not None:
+            d = imap4.maybeDeferred(cmbx.close)
+        if d is not None:
+            d.addCallbacks(self.__cbClose, self.__ebClose, (tag,), None, (tag,), None)
+        else:
+            self.__cbClose(None, tag)
+
+    select_CLOSE = (do_CLOSE,)
+
+    def __cbClose(self, result, tag):
+        self.sendPositiveResponse(tag, 'CLOSE completed')
+        self.mbox.removeListener(self)
+        self.mbox = None
+        self.state = 'auth'
     
     def _cbCopySelectedMailbox(self, mbox, tag, messages, mailbox, uid):
         if not isinstance(mbox, IMAPMailbox):
