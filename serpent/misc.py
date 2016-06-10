@@ -19,5 +19,5 @@ MBOX_FLAGS = {
     'HASNOCHILDREN': '\\HasNoChildren'
     }
 IMAP_HDELIM = '.'
-IMAP_ACC_CONN_NUM = '...ConnectionNumber...'
+IMAP_ACC_CONN_NUM = '...ConnectionUUID...'
 IMAP_MBOX_REG = {}
