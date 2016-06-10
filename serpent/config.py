@@ -32,8 +32,6 @@ conf.imap_TRASH = 'Trash'
 conf.imap_JUNK = 'Junk'
 conf.imap_ARCHIVE = 'Archive'
 conf.imap_DRAFTS = 'Drafts'
-conf.imap_msg_info = 'msg_info.db'
-conf.imap_mbox_info = 'mbox_info.db'
 conf.imap_auto_mbox = {'INBOX':             '\\INBOX',
                        conf.imap_SENT:      '\\Sent', 
                        conf.imap_TRASH:     '\\Trash',
@@ -43,3 +41,6 @@ conf.imap_auto_mbox = {'INBOX':             '\\INBOX',
                        }
 conf.imap_expunge_on_close = True
 conf.imap_check_new_interval = 10.0         # Период проверки новых сообщений в ящике
+conf.imap_msg_flags = 'msg_flags.db'
+conf.imap_msg_uids = 'msg_uids.db'
+conf.imap_mbox_info = 'mbox_info.db'

@@ -66,11 +66,11 @@ class IMAPUserAccount(object):
     def create(self, pathspec):
         if isinstance(pathspec, unicode):
             pathspec = pathspec.encode('imap4-utf-7')
-        if pathspec not in IMAP_MBOX_REG[self.dir].keys():
+        if pathspec not in IMAP_MBOX_REG[self.dir].iterkeys():
             paths = filter(None, pathspec.split(IMAP_HDELIM))
             for accum in range(1, len(paths)):
                 subpath = IMAP_HDELIM.join(paths[:accum])
-                if subpath not in IMAP_MBOX_REG[self.dir].keys():
+                if subpath not in IMAP_MBOX_REG[self.dir].iterkeys():
                     try:
                         IMAP_MBOX_REG[self.dir][subpath] = self._getMailbox(IMAP_HDELIM.join(paths[:accum]))
                         IMAP_MBOX_REG[self.dir][subpath].subscribe()
@@ -189,16 +189,24 @@ class IMAPServerProtocol(imap4.IMAP4Server):
     
     def connectionLost(self, reason):
         self.setTimeout(None)
-        if self.account and self.account.dir in IMAP_MBOX_REG.keys():
-            IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] -= 1
-            if IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] <= 0:
-                for m in IMAP_MBOX_REG[self.account.dir].keys():
-                    if m == IMAP_ACC_CONN_NUM:
-                        continue
-                    IMAP_MBOX_REG[self.account.dir][m].close()
-                    del IMAP_MBOX_REG[self.account.dir][m]
-                del IMAP_MBOX_REG[self.account.dir]
-            self.account = None
+        if self.account and self.account.dir in IMAP_MBOX_REG.iterkeys():
+            #IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] -= 1
+            #if IMAP_MBOX_REG[self.account.dir][IMAP_ACC_CONN_NUM] <= 0:
+            #    for m in IMAP_MBOX_REG[self.account.dir].iterkeys():
+            #        if m == IMAP_ACC_CONN_NUM:
+            #            continue
+            #        IMAP_MBOX_REG[self.account.dir][m].listeners = []
+            #        IMAP_MBOX_REG[self.account.dir][m].close()
+            #        del IMAP_MBOX_REG[self.account.dir][m]
+            #    del IMAP_MBOX_REG[self.account.dir]
+            
+            if self.mbox:
+                print('+++ lost connection to %s' % (self.mbox.path,))
+                self.mbox.removeListener(self)
+                self.mbox.close()
+                if self.mbox.closed:
+                    del IMAP_MBOX_REG[self.account.dir][self.mbox.path.split('/')[-1]]
+                self.account = None
     
     def _parseMbox(self, name):
         if isinstance(name, unicode):
