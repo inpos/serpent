@@ -6,9 +6,10 @@ conf = Config()
 conf.VERSION = '0.1.0'
 conf.SRVNAME = 'Serpent'
 conf.srv_version = '%s %s' % (conf.SRVNAME, conf.VERSION)
+conf.imap_connection_timeout = 120
 conf.local_domains = ['dom.lan']    # Список доменов, для которых будет приниматься почта
 conf.tls = True
-conf.tls_pem = './serpent.pem'
+conf.tls_pem = u'./serpent.pem'
 conf.smtp_open_relay = False        # Разрешить ли пересылку откуда угодно куда угодно
 conf.smtp_email_delim = '@'
 conf.smtp_header = '''from [{sender_ip}] (helo={sender_host})
@@ -28,9 +29,17 @@ conf.smtp_email_tls_required = True
 
 conf.imap_SENT = 'Sent'
 conf.imap_TRASH = 'Trash'
-conf.imap_subscribed = '.subscribed'
+conf.imap_JUNK = 'Junk'
+conf.imap_ARCHIVE = 'Archive'
+conf.imap_DRAFTS = 'Drafts'
 conf.imap_msg_info = 'msg_info.db'
 conf.imap_mbox_info = 'mbox_info.db'
-conf.imap_auto_mbox = ['INBOX', 'Sent', 'Trash']
+conf.imap_auto_mbox = {'INBOX':             '\\INBOX',
+                       conf.imap_SENT:      '\\Sent', 
+                       conf.imap_TRASH:     '\\Trash',
+                       conf.imap_JUNK:      '\\Junk',
+                       conf.imap_ARCHIVE:   '\\Archive',
+                       conf.imap_DRAFTS:    '\\Drafts'
+                       }
 conf.imap_expunge_on_close = True
 conf.imap_check_new_interval = 10.0         # Период проверки новых сообщений в ящике

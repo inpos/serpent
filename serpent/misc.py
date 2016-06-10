@@ -10,6 +10,14 @@ IMAP_FLAGS = {
     'T':  '\\Trashed',
     'D':    '\\Draft'    
     }
+MBOX_FLAGS = {
+    'NOINFERIORS': '\\Noinferiors',
+    'NOSELECT': '\\Noselect',
+    'MARKED': '\\Marked',
+    'UNMARKED': '\\Unmarked',
+    'HASCHILDREN': '\\HasChildren',
+    'HASNOCHILDREN': '\\HasNoChildren'
+    }
 IMAP_HDELIM = '.'
 IMAP_ACC_CONN_NUM = '...ConnectionNumber...'
 IMAP_MBOX_REG = {}
