@@ -99,7 +99,7 @@ class IMAPMailbox(ExtendedMaildir):
         if 'special' not in self.mbox_info.keys(): self.mbox_info['special'] = ''
         if 'uidvalidity' not in self.mbox_info.keys(): self.mbox_info['uidvalidity'] = random.randint(0, 2**32)
         if 'uidnext' not in self.mbox_info.keys(): self.mbox_info['uidnext'] = 1
-        self.mbox_info.commit(blocking=False)
+        #self.mbox_info.commit(blocking=False)    # XXX
         l = [l for l in self.__msg_list_()]
         for i in l:
             fn = i.split('/')[-1]
@@ -110,15 +110,15 @@ class IMAPMailbox(ExtendedMaildir):
                 else:
                     val1['flags'] = [misc.IMAP_FLAGS['SEEN']]
                 self.msg_info[fn] = val1
-        self.msg_info.commit(blocking=False)
+        #self.msg_info.commit(blocking=False)    # XXX
 
     def subscribe(self):
         self.mbox_info['subscribed'] = True
-        self.mbox_info.commit(blocking=False)
+        #self.mbox_info.commit(blocking=False)    # XXX
 
     def unsubscribe(self):
         self.mbox_info['subscribed'] = False
-        self.mbox_info.commit(blocking=False)
+        #self.mbox_info.commit(blocking=False)    # XXX
     
     def is_subscribed(self):
         return self.mbox_info['subscribed']
@@ -132,7 +132,7 @@ class IMAPMailbox(ExtendedMaildir):
 
     def setSpecial(self, special):
         self.mbox_info['special'] = special
-        self.mbox_info.commit(blocking=False)
+        #self.mbox_info.commit(blocking=False)    # XXX
 
     def getFlags(self):
         return sorted(misc.IMAP_FLAGS.values())
@@ -144,11 +144,11 @@ class IMAPMailbox(ExtendedMaildir):
     
     def addFlag(self, flag):
         self.mbox_info['flags'] = list(set(self.mbox_info['flags']).union([flag]))
-        self.mbox_info.commit(blocking=False)
+        #self.mbox_info.commit(blocking=False)    # XXX
     
     def removeFlag(self, flag):
         self.mbox_info['flags'] = list(set(self.mbox_info['flags']).difference([flag]))
-        self.mbox_info.commit(blocking=False)
+        #self.mbox_info.commit(blocking=False)    # XXX
     
     def hasChildren(self):
         flags = self.getFlags()
@@ -175,7 +175,7 @@ class IMAPMailbox(ExtendedMaildir):
                 info = self.msg_info[fn]
                 info['flags'] = set(info['flags']).difference(set([misc.IMAP_FLAGS['RECENT']]))
                 self.msg_info[fn] = info
-        self.msg_info.commit(blocking=False)
+        #self.msg_info.commit(blocking=False)    # XXX
         return c
     
     def getUnseenCount(self):
@@ -190,7 +190,7 @@ class IMAPMailbox(ExtendedMaildir):
     def getUIDNext(self):
         un = self.mbox_info['uidnext']
         self.mbox_info['uidnext'] += 1
-        self.mbox_info.commit(blocking=False)
+        #self.mbox_info.commit(blocking=False)    # XXX
         return un
     
     def getUID(self, num):
@@ -204,7 +204,7 @@ class IMAPMailbox(ExtendedMaildir):
         self.lastadded = None
         fn = path.split('/')[-1]
         self.msg_info[fn] = {'uid': self.getUIDNext(), 'flags': flags}
-        self.msg_info.commit(blocking=False)
+        #self.msg_info.commit(blocking=False)    # XXX
         if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
             new_path = os.path.join(self.path, 'cur', fn)
             os.rename(path, new_path)
@@ -274,7 +274,7 @@ class IMAPMailbox(ExtendedMaildir):
                     new_path = os.path.join(self.path, 'cur', filename)
                     os.rename(path, new_path)
             d[_id] = self.msg_info[filename]['flags']
-        self.msg_info.commit(blocking=False)
+        #self.msg_info.commit(blocking=False)    # XXX
         return d
     
     def expunge(self):
@@ -288,7 +288,7 @@ class IMAPMailbox(ExtendedMaildir):
                 os.remove(path)
                 del self.msg_info[fn]
                 uids.append(uid)
-        self.msg_info.commit(blocking=False)
+        #self.msg_info.commit(blocking=False)    # XXX
         return uids
     
     def addListener(self, listener):
@@ -306,10 +306,15 @@ class IMAPMailbox(ExtendedMaildir):
         pass
 
     def close(self):
+        print('!!! %s - %d !!!' % (self.path, len(self.listeners)))
         if len(self.listeners) == 0:
             self._stop_monitor() 
             if conf.imap_expunge_on_close:
                 self.expunge()
+            self.msg_info.commit(blocking=False)
+            self.mbox_info.commit(blocking = False)
+            self.msg_info.close()
+            self.mbox_info.close()
 
 class MaildirMessagePart(object):
     implements(imap4.IMessagePart)
