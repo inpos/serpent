@@ -69,7 +69,8 @@ class MailDirStore(object):
         inbox = os.path.join(mdir, 'INBOX')
         mailbox = self.mbox.IMAPMailbox(inbox)
         try:
-            mailbox.addMessage(message, [IMAP_FLAGS['RECENT']])
+            #mailbox.addMessage(message, [IMAP_FLAGS['RECENT']])
+            mailbox.addMessage(message, [])
             return True
         except:
             raise

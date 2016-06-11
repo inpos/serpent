@@ -92,8 +92,10 @@ class IMAPMailbox(ExtendedMaildir):
 
     def _new_files(self, wo, path, code):
         if code == inotify.IN_MOVED_TO or code == inotify.IN_DELETE:
+            c = self.getMessageCount()
+            r = self.getRecentCount()
             for l in self.listeners:
-                l.newMessages(self.getMessageCount(), self.getRecentCount())
+                l.newMessages(c, r)
 
     def __check_flags_(self):
         if 'subscribed' not in self.mbox_info.keys(): self.mbox_info['subscribed'] = False
@@ -101,6 +103,7 @@ class IMAPMailbox(ExtendedMaildir):
         if 'special' not in self.mbox_info.keys(): self.mbox_info['special'] = ''
         if 'uidvalidity' not in self.mbox_info.keys(): self.mbox_info['uidvalidity'] = random.randint(0, 2**32)
         if 'uidnext' not in self.mbox_info.keys(): self.mbox_info['uidnext'] = 1
+        if 'recent' not in self.mbox_info.keys(): self.mbox_info['recent'] = []
         #self.mbox_info.commit(blocking=False)    # XXX
         l = [l for l in self.__msg_list_()]
         for i in l:
@@ -167,16 +170,19 @@ class IMAPMailbox(ExtendedMaildir):
         return sum(1 for flags in self.msg_flags.itervalues() if misc.IMAP_FLAGS['DELETED'] not in flags)
 
     def getRecentCount(self):
-        c = 0
-        for m_items in self.msg_flags.iteritems():
-            if misc.IMAP_FLAGS['RECENT'] in m_items[1]:
-                c += 1
-                self.msg_flags[m_items[0]] = list(set(m_items[1]).difference(set([misc.IMAP_FLAGS['RECENT']])))
-        #self.msg_info.commit(blocking=False)    # XXX
+        #c = 0
+        #for m_items in self.msg_flags.iteritems():
+        #    if misc.IMAP_FLAGS['RECENT'] in m_items[1]:
+        #        c += 1
+        #        self.msg_flags[m_items[0]] = list(set(m_items[1]).difference(set([misc.IMAP_FLAGS['RECENT']])))
+        ##self.msg_info.commit(blocking=False)    # XXX
+        c = len(self.mbox_info['recent'])
+        if c > 0: 
+            self.mbox_info['recent'] = []
         return c
     
     def getUnseenCount(self):
-        return self.getMessageCount() - self.__count_flagged_msgs_(misc.IMAP_FLAGS['SEEN'])
+        return sum(1 for flags in self.msg_flags.itervalues() if misc.IMAP_FLAGS['SEEN'] not in flags)
 
     def isWriteable(self):
         return True
@@ -206,6 +212,7 @@ class IMAPMailbox(ExtendedMaildir):
         if misc.IMAP_FLAGS['SEEN'] in flags and path.split('/')[-2] != 'cur':
             new_path = os.path.join(self.path, 'cur', fn)
             os.rename(path, new_path)
+        self.mbox_info['recent'] = list(set(self.mbox_info['recent']).union(set([fn])))
 
     def __msg_list_(self):
         a = []
@@ -303,9 +310,6 @@ class IMAPMailbox(ExtendedMaildir):
             self._stop_monitor() 
             if conf.imap_expunge_on_close:
                 self.expunge()
-            self.msg_uids.close()
-            self.msg_flags.close()
-            self.mbox_info.close()
             self.closed = True
 
 class MaildirMessagePart(object):

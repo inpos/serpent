@@ -217,25 +217,7 @@ class IMAPServerProtocol(imap4.IMAP4Server):
         except:
             #log.err()
             raise imap4.IllegalMailboxEncoding(name)
-    
-    def do_CLOSE(self, tag):
-        d = None
-        cmbx = imap4.ICloseableMailbox(self.mbox, None)
-        if cmbx is not None:
-            d = imap4.maybeDeferred(cmbx.close)
-        if d is not None:
-            d.addCallbacks(self.__cbClose, self.__ebClose, (tag,), None, (tag,), None)
-        else:
-            self.__cbClose(None, tag)
 
-    select_CLOSE = (do_CLOSE,)
-
-    def __cbClose(self, result, tag):
-        self.sendPositiveResponse(tag, 'CLOSE completed')
-        self.mbox.removeListener(self)
-        self.mbox = None
-        self.state = 'auth'
-    
     def _cbCopySelectedMailbox(self, mbox, tag, messages, mailbox, uid):
         if not isinstance(mbox, IMAPMailbox):
             self.sendNegativeResponse(tag, 'No such mailbox: ' + mailbox)
